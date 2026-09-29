@@ -5,8 +5,10 @@ __pycache__/
 *.swp
 *.swo
 
-# API keys — never commit real credentials
+# API keys — never commit real credentials (sanitized sample stays tracked)
 .env
+.env.*
+!.env.sample
 
 .pi/agent-sessions/
 

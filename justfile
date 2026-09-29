@@ -1,7 +1,8 @@
-set dotenv-load := true
-
 default:
     @just --list
+
+# No `set dotenv-load`: recipes inherit the calling shell's environment only.
+# Configuration stays explicit; see README (Authentication) for details.
 
 # prime
 
@@ -89,6 +90,12 @@ ext-theme-cycler:
 
 # utils
 
+# Load-only check: import every extensions/*.ts factory through the installed
+# Pi package's extension loader. No session, no UI, no provider/model calls.
+# Optionally pass an explicit Pi package directory: just check-extensions C:/path/to/pi-coding-agent
+check-extensions *args:
+    bun scripts/check-extension-loads.ts {{args}}
+
 # Open pi with one or more stacked extensions in a new terminal: just open minimal tool-counter
 open +exts:
     #!/usr/bin/env bash
@@ -130,13 +137,13 @@ local-coms *args:
 # Auto-kills any stale process holding the pinned port first.
 coms-net-server:
     -lsof -ti :${PI_COMS_NET_PORT:-52965} | xargs -r kill -TERM 2>/dev/null
-    bun scripts/coms-net-server.ts
+    bun --no-env-file scripts/coms-net-server.ts
 
 # Start a LAN-visible coms-net server (binds 0.0.0.0, requires PI_COMS_NET_AUTH_TOKEN)
 # Auto-kills any stale process holding the pinned port first.
 coms-net-server-lan:
     -lsof -ti :${PI_COMS_NET_PORT:-52965} | xargs -r kill -TERM 2>/dev/null
-    PI_COMS_NET_HOST=0.0.0.0 bun scripts/coms-net-server.ts
+    PI_COMS_NET_HOST=0.0.0.0 bun --no-env-file scripts/coms-net-server.ts
 
 # Pi with networked coms client (auto-discovers local server.json)
 # Agent name flag is --cname (pi owns --name). Pass both so pi's session and the

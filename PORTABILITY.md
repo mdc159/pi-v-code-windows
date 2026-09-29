@@ -6,7 +6,7 @@ This document records the Windows and provider-authentication audit before porta
 - **Upstream:** https://github.com/disler/pi-vs-claude-code
 - **Audited baseline:** `0ed11f4` (`add thinking and model to subagents`)
 - **Target:** native Windows with an already configured and authenticated Pi installation; Git Bash is available. WSL is not assumed.
-- **Status:** findings and proposed work only. The earlier `argument-hint` quoting fix is separate from the pending portability work.
+- **Status:** Phase 1 (setup documentation and reproducible load baseline) is implemented on `windows-portability`; see the [implementation phase log](#implementation-phase-log) and [finding status](#finding-status) below. The audit findings below are the pre-implementation baseline, preserved as historical evidence — they do not reflect post-Phase-1 state. The earlier `argument-hint` quoting fix is separate from the portability work.
 
 ## Guiding requirements
 
@@ -203,12 +203,63 @@ argument-hint: "[user prompt] [orchestration prompt]"
 
 **Proposed work:** remove unused setup requirements, review ignore patterns, update agent-facing conventions, and add focused automated portability tests before broad refactoring.
 
+## Implementation phase log
+
+### Phase 1 — setup documentation and reproducible load baseline (2026-09-29)
+
+**Branch:** `windows-portability`, based on `56cbd82`. **Environment recheck:** Pi 0.87.1, Node 24.13.0, Bun 1.3.14, just 1.57.0, Git 2.52.0.windows.1 — unchanged from the audit.
+
+**What changed:**
+
+- `scripts/check-extension-loads.ts` (new): load-only check that imports every `extensions/*.ts` factory (excluding the `themeMap.ts` helper) through the installed Pi package's internal extension loader (`dist/core/extensions/loader.js`, `loadExtensions()`). Accepts an explicit Pi package directory; defaults to the global npm installation discovered via `npm root -g`. No hard-coded user paths, no second Pi dependency. The reliance on a version-specific internal loader (verified against 0.87.1) is documented in the script header and in `WINDOWS_PORTING_GUIDE.md`.
+- `justfile`: removed `set dotenv-load := true`; added `--no-env-file` to both Bun server recipes (Bun 1.3.14 otherwise auto-loads `.env` from the working directory); added the `check-extensions` recipe. Recipes inherit the calling shell's environment only.
+- `.env.sample`: rewritten as a fully commented, optional variable reference; no active placeholder keys; `E2B_API_KEY` removed (no consumer found — P10).
+- `.gitignore`: now ignores `.env.*` variants while keeping `.env.sample` tracked (`!.env.sample`).
+- `README.md`: fork attribution and Windows status up front; native-Windows prerequisites (`just` optional; Pi authentication reused); the mandatory `.env`/API-key instructions replaced with existing-authentication reuse; optional integrations documented separately; a known-limitations section pointing back to P03–P09; `check-extensions` documented; project structure updated.
+- `CLAUDE.md`: updated for the Windows fork context, authentication reuse, explicit env loading, and phase discipline.
+- `WINDOWS_PORTING_GUIDE.md` (new): reusable guide covering baseline discovery, shell distinctions, dependency/auth separation, verification levels (L0–L5), the load-check mechanics, and a findings template.
+
+**Verified (L0 / no network, no model calls):**
+
+- `bun install --frozen-lockfile`: no changes; `bun.lock` and `package.json` untouched.
+- Load check: **18/18 extension factories load** (both damage-control variants now pass with `yaml@2.8.2` installed). The audit's 16/18 result is fully explained by the missing dependency. Exit codes verified: 0 success, 1 load failure, 2 discovery failure; explicit package-dir argument works.
+- Dotenv behavior in an isolated temp directory with sentinel variables: Bun 1.3.14 auto-loads `.env` by default; `--no-env-file` disables it; inherited process env passes through with `--no-env-file` (and takes precedence over `.env` without it); `just` without `dotenv-load` neither loads `.env` nor blocks inherited variables.
+- `just --list` parses; dry runs of safe recipes print the expected commands. Terminal-opening (`open`, `all`) and hub-cleanup recipes were NOT executed.
+- `git check-ignore` on hypothetical paths: `.env`, `.env.local`, `.env.production` ignored; `.env.sample` still tracked.
+- `git diff --check` clean.
+
+**Not tested (unchanged from audit):** lifecycle handlers, UI, subagent spawning, coms/coms-net messaging, terminal opening, hub startup, and any model-backed workflow. Loading is L0 only; see verification levels in `WINDOWS_PORTING_GUIDE.md`.
+
+**Generalizes:** dotenv hazard table, verification-level ladder, and the internal-loader load-check approach (see `WINDOWS_PORTING_GUIDE.md`).
+
+## Finding status
+
+Granular status after Phase 1. "Partial" means the Phase 1-scoped work is complete; the finding stays open until its full fix and verification land in a later phase.
+
+| Finding | Phase 1 status | Remaining |
+| --- | --- | --- |
+| P01 mandatory `.env` | Partial — justfile `dotenv-load` removed, README rewritten, `.env.sample` made optional | `python-dotenv` in `.claude/status_lines/status_line.py` (Phase 6) |
+| P02 macOS-oriented setup docs | Partial — README prerequisites rewritten for native Windows | expert-prompt guidance (P11, Phase 6) |
+| P03 macOS-only terminal open | Open — documented as a known limitation | platform-aware launcher (Phase 4) |
+| P04 hub Unix tools / kill | Open — documented as a known limitation; `--no-env-file` added to the two server recipes (dotenv scope only) | portable startup, safe conflict reporting (Phase 4) |
+| P05 CRLF parsing | Open | parser fixes + LF/CRLF regression tests (Phase 2) |
+| P06 subagent launchers | Open | shared Windows-compatible launcher (Phase 3) |
+| P07 provider/model fallback | Partial — README marks model-pinned recipes as opt-in examples | code-level inheritance/clear-failure behavior (Phase 3) |
+| P08 child extensions disabled | Open | child-extension policy (Phase 3) |
+| P09 coms-net POSIX perms | Open | Windows-aware access protection (Phase 5) |
+| P10 optional integrations | Partial — E2B removed from `.env.sample`; optional config documented separately | browser/crawler setup and naming reconciliation (Phase 6) |
+| P11 remote docs / `/tmp` | Open | expert prompt updates (Phase 6) |
+| P12 damage-control gaps | Open | Windows/PowerShell guardrails (Phase 6) |
+| P13 README command drift | Partial — `.env`-based coms-net instruction fixed; coms examples still use `--name` only | full example reconciliation (Phase 6) |
+| P14 prompt loading docs | Open | documentation and precedence tests (Phase 6) |
+| P15 config/test cleanup | Partial — `.gitignore` env variants reviewed | status-line dotenv removal, test suite, CI (Phases 6–7) |
+
 ## Suggested implementation order
 
-All items below are pending; this document is not an implementation claim.
+All items below are pending unless annotated; this document is not an implementation claim.
 
-- [ ] Update README, optional configuration samples, and agent instructions for existing Pi authentication and native Windows.
-- [ ] Install declared dependencies with Bun and repeat extension-load checks.
+- [ ] Update README, optional configuration samples, and agent instructions for existing Pi authentication and native Windows. *(Phase 1: README, `.env.sample`, `.gitignore`, justfile, and root `CLAUDE.md` done; expert agent prompts remain — P11)*
+- [x] Install declared dependencies with Bun and repeat extension-load checks. *(Phase 1: 18/18 factories load; `scripts/check-extension-loads.ts` added)*
 - [ ] Fix CRLF parsing and add shared parser regression tests.
 - [ ] Add a cross-platform subagent launcher and verify argument preservation, streaming, errors, and cancellation.
 - [ ] Preserve provider/model selection and define the child-extension policy.

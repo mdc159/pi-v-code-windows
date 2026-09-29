@@ -1,6 +1,8 @@
-# pi-vs-cc
+# pi-vs-cc — Windows portability fork
 
-A collection of [Pi Coding Agent](https://github.com/mariozechner/pi-coding-agent) customized instances. _Why?_ To showcase what it looks like to hedge against the leader in the agentic coding market, Claude Code. Here we showcase how you can customize the UI, agent orchestration tools, safety auditing, agent to agent orchestration, and cross-agent integrations. 
+> **Fork notice.** This is [`mdc159/pi-v-code-windows`](https://github.com/mdc159/pi-v-code-windows), a native-Windows portability fork of [`disler/pi-vs-claude-code`](https://github.com/disler/pi-vs-claude-code) (upstream). Upstream is a macOS-first showcase: nothing in it — including the videos embedded below — demonstrates Windows support. The Windows audit, per-finding status, and phase log live in [PORTABILITY.md](PORTABILITY.md); reusable porting lessons live in [WINDOWS_PORTING_GUIDE.md](WINDOWS_PORTING_GUIDE.md).
+
+A collection of [Pi Coding Agent](https://github.com/mariozechner/pi-coding-agent) customized instances. _Why?_ To showcase what it looks like to hedge against the leader in the agentic coding market, Claude Code. Here we showcase how you can customize the UI, agent orchestration tools, safety auditing, agent to agent orchestration, and cross-agent integrations.
 
 > Want to see these **6+ unique Pi Agent Harnesses in action?** Watch [Pi Coding Agent: The Only Claude Code Competitor](https://youtu.be/f8cfH5XX-XU).
 
@@ -12,56 +14,31 @@ A collection of [Pi Coding Agent](https://github.com/mariozechner/pi-coding-agen
 
 ---
 
-## Prerequisites
+## Prerequisites (native Windows)
 
-All three are required:
+No WSL required. An already-installed, already-authenticated Pi is reused as-is — no second Pi install and no new provider keys.
 
-| Tool            | Purpose                   | Install                                                    |
-| --------------- | ------------------------- | ---------------------------------------------------------- |
-| **Bun** ≥ 1.3.2 | Runtime & package manager | [bun.sh](https://bun.sh)                                   |
-| **just**        | Task runner               | `brew install just`                                        |
-| **pi**          | Pi Coding Agent CLI       | [Pi docs](https://github.com/mariozechner/pi-coding-agent) |
+| Tool              | Required?     | Purpose                                                | Notes                                        |
+| ----------------- | ------------- | ------------------------------------------------------ | -------------------------------------------- |
+| **pi**            | Required      | Pi Coding Agent CLI                                    | Reuse the installed, authenticated copy      |
+| **Bun** ≥ 1.3.2   | Required      | Installs the `yaml` dependency; runs the coms-net hub  | [bun.sh](https://bun.sh)                     |
+| **just**          | Optional      | Convenience recipes                                    | Every recipe is a plain command (see below)  |
+| Git Bash          | Recommended   | Shell used by `just` recipes                          | Ships with Git for Windows                   |
+
+macOS and Linux continue to work for everything that is not platform-specific; see [Known limitations on Windows](#known-limitations-on-windows).
 
 ---
 
-## API Keys
+## Authentication
 
-Pi does **not** auto-load `.env` files — API keys must be present in your shell's environment **before** you launch Pi. A sample file is provided:
+**Reuse your existing Pi authentication.** If `pi` is already installed and signed in, you are done — no project `.env`, no copied keys, no new sign-in. Pi stores provider credentials (including OAuth) itself; environment API keys are one supported option, not a prerequisite. See the [Pi providers docs](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/providers.md) for every supported route.
 
-```bash
-cp .env.sample .env   # copy the template
-# open .env and fill in your keys
-```
+If you deliberately prefer environment keys, export them in your shell before launching Pi. [`.env.sample`](.env.sample) is a fully commented reference of optional variable names — not a template to fill in. Configuration is always explicit in this fork:
 
-`.env.sample` covers the four most popular providers:
+- The `justfile` does **not** auto-load `.env` files; recipes inherit the calling shell's environment only.
+- Bun-based recipes pass `--no-env-file`, because Bun otherwise auto-loads `.env` from the working directory.
 
-| Provider         | Variable             | Get your key                                                                                               |
-| ---------------- | -------------------- | ---------------------------------------------------------------------------------------------------------- |
-| OpenAI           | `OPENAI_API_KEY`     | [platform.openai.com](https://platform.openai.com/api-keys)                                                |
-| Anthropic        | `ANTHROPIC_API_KEY`  | [console.anthropic.com](https://console.anthropic.com/settings/keys)                                       |
-| Google           | `GEMINI_API_KEY`     | [aistudio.google.com](https://aistudio.google.com/app/apikey)                                              |
-| OpenRouter       | `OPENROUTER_API_KEY` | [openrouter.ai](https://openrouter.ai/keys)                                                                |
-| Many Many Others | `***`                | [Pi Providers docs](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/providers.md) |
-
-### Sourcing your keys
-
-Pick whichever approach fits your workflow:
-
-**Option A — Source manually each session:**
-```bash
-source .env && pi
-```
-
-**Option B — One-liner alias (add to `~/.zshrc` or `~/.bashrc`):**
-```bash
-alias pi='source $(pwd)/.env && pi'
-```
-
-**Option C — Use the `just` task runner (auto-wired via `set dotenv-load`):**
-```bash
-just pi           # .env is loaded automatically for every just recipe
-just ext-minimal  # works for all recipes, not just `pi`
-```
+Optional integrations (the coms-net hub, Firecrawl, browser automation) have their own separate configuration — see `.env.sample` and [PORTABILITY.md](PORTABILITY.md) finding P10.
 
 ---
 
@@ -70,6 +47,27 @@ just ext-minimal  # works for all recipes, not just `pi`
 ```bash
 bun install
 ```
+
+This installs the repository's declared dependencies (currently `yaml`, used by the damage-control extensions). Then verify that every extension factory loads on your machine:
+
+```bash
+just check-extensions        # or: bun scripts/check-extension-loads.ts
+```
+
+The check imports every `extensions/*.ts` factory through the installed Pi package's extension loader and runs it against the loader's stub runtime — no session starts, no UI is created, and no provider/model requests are made. It proves import-time health only; see the verification levels in [WINDOWS_PORTING_GUIDE.md](WINDOWS_PORTING_GUIDE.md) for what that does and does not cover.
+
+## Known limitations on Windows
+
+This fork is mid-port. The following upstream behaviors are known-broken on native Windows; each is tracked with evidence and a fix plan in [PORTABILITY.md](PORTABILITY.md):
+
+- **Agent/team/chain discovery fails with CRLF checkouts** (P05) — the frontmatter and YAML parsers require LF line endings.
+- **Subagent launchers fail** (P06) — `subagent-widget`, `agent-team`, `agent-chain`, and `pi-pi` spawn `pi` in a way that fails with `ENOENT` on Windows.
+- **Terminal-opening recipes are macOS-only** (P03) — `just open` and `just all` use AppleScript; do not run them on Windows.
+- **Hub startup recipes use Unix tools** (P04) — the `coms-net-server*` recipes call `lsof` before starting Bun.
+- **Local coms-net token discovery can fail** (P09) — the client's strict POSIX `0600` file-mode check does not map to Windows ACLs.
+- **Model-pinned recipes are opt-in examples** (P07) — `coms1`–`coms4` assume particular providers/models are available to you; they are not part of default setup.
+
+A green `check-extensions` run does not mean these features work: loading proves imports, not lifecycle handlers, UI, subprocesses, or networking.
 
 ---
 
@@ -115,9 +113,9 @@ Extensions compose — pass multiple `-e` flags:
 pi -e extensions/minimal.ts -e extensions/cross-agent.ts
 ```
 
-### Use `just` recipes
+### Use `just` recipes (optional)
 
-`just` wraps the most useful combinations. Run `just` with no arguments to list all available recipes:
+`just` is pure convenience — every recipe is a plain `pi -e ...` or `bun ...` command you could run directly. Run `just` with no arguments to list all available recipes:
 
 ```bash
 just
@@ -142,8 +140,9 @@ just ext-damage-control-continue # Same rules, but blocked turns keep running
 just ext-agent-chain        # Sequential pipeline orchestrator with step chaining
 just ext-pi-pi              # Meta-agent that builds Pi agents using parallel experts
 just ext-session-replay     # Scrollable timeline overlay of session history
-just ext-theme-cycler       # Theme cycler + minimal footer
-just all                    # Open every extension in its own terminal window
+just ext-theme-cycler    # Theme cycler + minimal footer
+just check-extensions   # Load-only check of every extension factory
+just all                    # Open every extension in its own terminal window (macOS only)
 
 # Pi-to-Pi communication (see section below)
 just local-coms             # Same-machine peer-to-peer over Unix sockets
@@ -167,7 +166,8 @@ just open purpose-gate minimal tool-counter-widget
 ```
 pi-vs-cc/
 ├── extensions/          # Pi extension source files (.ts) — one file per extension
-├── specs/               # Feature specifications for extensions
+├── scripts/             # Standalone scripts (coms-net hub server, extension load check)
+├── specs/               # Feature specifications (incl. the Windows port plan)
 ├── .pi/
 │   ├── agent-sessions/  # Ephemeral session files (gitignored)
 │   ├── agents/          # Agent definitions for team and chain extensions
@@ -181,6 +181,8 @@ pi-vs-cc/
 │   └── settings.json    # Pi workspace settings
 ├── justfile             # just task definitions
 ├── CLAUDE.md            # Conventions and tooling reference (for agents)
+├── PORTABILITY.md       # Windows audit findings, status, and phase log
+├── WINDOWS_PORTING_GUIDE.md # Reusable guide for porting similar repositories
 ├── THEME.md             # Color token conventions for extension authors
 └── TOOLS.md             # Built-in tool function signatures available in extensions
 ```
@@ -302,7 +304,7 @@ just coms1 --name researcher
 just coms3 --name verifier
 ```
 
-For remote / cross-LAN: set `PI_COMS_NET_SERVER_URL` and `PI_COMS_NET_AUTH_TOKEN` in `.env` (template in `.env.sample`). Front the hub with TLS for anything beyond a trusted LAN.
+For remote / cross-LAN: set `PI_COMS_NET_SERVER_URL` and `PI_COMS_NET_AUTH_TOKEN` in your shell environment (variable reference in [`.env.sample`](.env.sample)). Front the hub with TLS for anything beyond a trusted LAN.
 
 ### Safety rails baked in
 
